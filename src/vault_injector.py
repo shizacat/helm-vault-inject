@@ -10,8 +10,8 @@ Logging is saved to vault_injector.log
 
 LOGGER_FILE_NAME = "./vault_injector.log"
 
-import sys
-import logging
+import sys  # noqa: E402
+import logging  # noqa: E402
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +21,7 @@ logger.addHandler(logging.FileHandler(LOGGER_FILE_NAME))
 try:
     import hvac
     import hvac.exceptions
-except ImportError as e:
+except ImportError:
     logger.error(
         "The 'hvac' library is required. "
         "Please install it via 'pip install hvac'."
