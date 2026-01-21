@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install linting tools
+      run: |
+        pip install black flake8
+    
+    - name: Run black
+      run: |
+        black --check src/ tests/
+    
+    - name: Run flake8
+      run: |
+        flake8 src/ tests/
