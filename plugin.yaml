@@ -5,4 +5,4 @@ version: 0.1.0
 runtime: subprocess
 runtimeConfig:
   platformCommand:
-    - command: ${HELM_PLUGIN_DIR}/source/vault_injector.py
+    - command: ${HELM_PLUGIN_DIR}/src/vault_injector.py
