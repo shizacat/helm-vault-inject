@@ -313,13 +313,13 @@ def main():
     try:
         vinj = VaultInjector(logger=logger)
     except Exception as e:
-        sys.stderr.write(f"Error initializing VaultInjector: {e}\n")
+        logger.error(f"Error initializing VaultInjector: {e}")
         sys.exit(1)
 
     try:
         sys.stdout.write(vinj.process(sys.stdin.read()))
     except Exception as e:
-        sys.stderr.write(f"Error processing input: {e}\n")
+        logger.error(f"Error processing input: {e}")
         sys.exit(1)
 
 
