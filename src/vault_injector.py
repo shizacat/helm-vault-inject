@@ -143,17 +143,25 @@ class VaultInjector(object):
         Process Helm manifests and inject Vault keys.
 
         Args:
-            input_data: Input YAML manifests from stdin
+            yaml_string: Input YAML manifests (may contain multiple documents
+                         separated by '---')
 
         Returns:
-            Processed YAML manifests
+            Processed YAML manifests (with '---' separators preserved)
         """
-        data = self._json_walker(
-            self.yaml.load(yaml_string), self._process_yaml
-        )
-        # Convert YAML back to string
+        # Load all YAML documents
+        documents = list(self.yaml.load_all(yaml_string))
+
+        # Process each document
+        processed_documents = []
+        for doc in documents:
+            if doc is not None:  # Skip empty documents
+                processed_doc = self._json_walker(doc, self._process_yaml)
+                processed_documents.append(processed_doc)
+
+        # Convert all processed documents back to string
         output = StringIO()
-        self.yaml.dump(data, output)
+        self.yaml.dump_all(processed_documents, output)
         return output.getvalue()
 
     def _json_walker(
