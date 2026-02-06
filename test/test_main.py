@@ -5,6 +5,7 @@ import pytest
 
 import hvac.exceptions
 from src.vault_injector import (
+    Config,
     HVWrongPath,
     KVVersion,
     VaultInjector,
@@ -243,3 +244,85 @@ def test__get_int_bad(vault_injector: VaultInjector):
     """_get_int raises ValueError for non-int string."""
     with pytest.raises(ValueError, match="Version is not int"):
         vault_injector._get_int("abc", "Version")
+
+# ===== Config =====
+
+def test_config_defaults():
+    """Config has expected default values when created without kwargs."""
+    cfg = Config()
+    assert cfg.mount_point == "secret"
+    assert cfg.template == "VAULT:"
+    assert cfg.deliminator == "changeme"
+    assert cfg.kvversion == KVVersion.v2
+    assert cfg.environment == ""
+
+
+def test_config_create_from_env_empty(monkeypatch):
+    """create_from_env with no env vars returns config with defaults."""
+    for key in ("MOUNT_POINT", "TEMPLATE", "DELIMINATOR", "KVVERSION", "ENVIRONMENT"):
+        monkeypatch.delenv(key, raising=False)
+    cfg = Config.create_from_env()
+    assert cfg.mount_point == "secret"
+    assert cfg.template == "VAULT:"
+    assert cfg.deliminator == "changeme"
+    assert cfg.kvversion == KVVersion.v2
+    assert cfg.environment == ""
+
+
+def test_config_create_from_env_string_fields(monkeypatch):
+    """create_from_env reads MOUNT_POINT, TEMPLATE, DELIMINATOR from env."""
+    monkeypatch.setenv("MOUNT_POINT", "my-mount")
+    monkeypatch.setenv("TEMPLATE", "SECRET:")
+    monkeypatch.setenv("DELIMINATOR", "mydelim")
+    cfg = Config.create_from_env()
+    assert cfg.mount_point == "my-mount"
+    assert cfg.template == "SECRET:"
+    assert cfg.deliminator == "mydelim"
+    assert cfg.kvversion == KVVersion.v2
+    assert cfg.environment == ""
+
+
+def test_config_create_from_env_kvversion_v1(monkeypatch):
+    """create_from_env sets kvversion to v1 when KVVERSION=v1."""
+    monkeypatch.setenv("KVVERSION", "v1")
+    cfg = Config.create_from_env()
+    assert cfg.kvversion == KVVersion.v1
+
+
+def test_config_create_from_env_kvversion_v2(monkeypatch):
+    """create_from_env sets kvversion to v2 when KVVERSION=v2 or other value."""
+    monkeypatch.setenv("KVVERSION", "v2")
+    cfg = Config.create_from_env()
+    assert cfg.kvversion == KVVersion.v2
+    monkeypatch.setenv("KVVERSION", "v3")
+    cfg2 = Config.create_from_env()
+    assert cfg2.kvversion == KVVersion.v2
+
+
+def test_config_create_from_env_with_prefix(monkeypatch):
+    """create_from_env(prefix) uses prefixed env var names."""
+    monkeypatch.setenv("HELM_VAULT_MOUNT_POINT", "prefixed-mount")
+    monkeypatch.setenv("HELM_VAULT_TEMPLATE", "PREFIX:")
+    cfg = Config.create_from_env(prefix="HELM_VAULT_")
+    assert cfg.mount_point == "prefixed-mount"
+    assert cfg.template == "PREFIX:"
+
+
+def test_config_environment_adds_slash(monkeypatch):
+    """Config __post_init__ adds leading '/' to environment if missing."""
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    cfg = Config.create_from_env()
+    assert cfg.environment == "/prod"
+
+
+def test_config_environment_keeps_slash(monkeypatch):
+    """Config __post_init__ does not double slash when environment already starts with /."""
+    monkeypatch.setenv("ENVIRONMENT", "/prod")
+    cfg = Config.create_from_env()
+    assert cfg.environment == "/prod"
+
+
+def test_config_environment_empty_unchanged():
+    """Config with empty environment leaves it empty."""
+    cfg = Config(environment="")
+    assert cfg.environment == ""
