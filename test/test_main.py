@@ -62,19 +62,6 @@ def vault_injector() -> VaultInjector:
         ({"a": 1}, [], dict),
         (None, [], type(None)),
     ],
-    # ids=[
-    #     "single_vault_ref",
-    #     # "vault_at_start",
-    #     # "vault_with_space_after",
-    #     # "vault_after_key",
-    #     # "empty_string",
-    #     # "no_vault",
-    #     # "whitespace_only",
-    #     # "int_value",
-    #     # "list_value",
-    #     # "dict_value",
-    #     # "none_value",
-    # ],
 )
 def test__process_yaml_variants(
     vault_injector: VaultInjector,
