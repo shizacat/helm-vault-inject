@@ -7,6 +7,7 @@ This plugin place key from HashiCorp Vault into manifests rendered by Helm.
 
 Logging is saved to vault_injector.log
 """
+
 import sys
 import logging
 import os

@@ -13,7 +13,6 @@ from src.vault_injector import (
     main,
 )
 
-
 # ===== Fixture ====
 
 
