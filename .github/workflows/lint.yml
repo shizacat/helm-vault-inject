@@ -24,7 +24,7 @@ jobs:
     
     - name: Run black
       run: |
-        black --check src/ tests/
+        black --check --diff src/ tests/
     
     - name: Run flake8
       run: |
