@@ -238,7 +238,7 @@ class VaultInjector(object):
             raise ValueError("The path is empty")
         if not value.startswith(self.envs.template):
             raise ValueError("The path is wrong")
-        value = value[len(self.envs.template) :]
+        value = value[len(self.envs.template):]  # fmt: skip
         if not value:
             raise ValueError("Empty secret template")
         value = value.replace("{environment}", self.envs.environment)

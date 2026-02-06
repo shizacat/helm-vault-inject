@@ -1,4 +1,3 @@
-import re
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -181,7 +180,10 @@ def test__json_walker_is_root_resets_path(vault_injector: VaultInjector):
 def test__json_walker_with_process_yaml_integration(
     vault_injector: VaultInjector,
 ):
-    """_json_walker with _process_yaml replaces VAULT: strings (mocked _replace_value)."""
+    """
+    _json_walker with _process_yaml replaces
+    VAULT: strings (mocked _replace_value).
+    """
     vault_injector._replace_value = MagicMock(
         side_effect=lambda m: "replaced_" + (m.group(0).replace("VAULT:", ""))
     )
@@ -297,14 +299,17 @@ def test__vault_read_by_path_kv1(vault_injector: VaultInjector):
 
 
 def test__vault_read_by_path_kv2(vault_injector: VaultInjector):
-    """KV v2: _vault_read_by_path uses read_secret_version and returns key from data.data."""
+    """
+    KV v2: _vault_read_by_path uses read_secret_version and
+    returns key from data.data.
+    """
     vault_injector.envs.kvversion = KVVersion.v2
     vault_injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
         return_value={"data": {"data": {"mykey": "secret-value-v2"}}}
     )
     result = vault_injector._vault_read_by_path("/secret/mypath.mykey")
     assert result == "secret-value-v2"
-    vault_injector.vault_client.secrets.kv.v2.read_secret_version.assert_called_once_with(
+    vault_injector.vault_client.secrets.kv.v2.read_secret_version.assert_called_once_with(  # noqa: E501
         path="/secret/mypath",
         mount_point=vault_injector.envs.mount_point,
         raise_on_deleted_version=True,
@@ -320,7 +325,7 @@ def test__vault_read_by_path_kv2_with_version(vault_injector: VaultInjector):
     )
     result = vault_injector._vault_read_by_path("/secret/testdata.user.1")
     assert result == "user-version-1"
-    vault_injector.vault_client.secrets.kv.v2.read_secret_version.assert_called_once_with(
+    vault_injector.vault_client.secrets.kv.v2.read_secret_version.assert_called_once_with(  # noqa: E501
         path="/secret/testdata",
         mount_point=vault_injector.envs.mount_point,
         raise_on_deleted_version=True,
@@ -329,7 +334,9 @@ def test__vault_read_by_path_kv2_with_version(vault_injector: VaultInjector):
 
 
 def test__vault_read_by_path_kv1_version_raises(vault_injector: VaultInjector):
-    """KV v1: _vault_read_by_path raises RuntimeError when version is specified."""
+    """
+    KV v1: _vault_read_by_path raises RuntimeError when version is specified.
+    """
     vault_injector.envs.kvversion = KVVersion.v1
     with pytest.raises(
         RuntimeError, match="KV version 1 don't get key by version"
@@ -348,7 +355,10 @@ def test__vault_read_by_path_invalid_path(vault_injector: VaultInjector):
 
 
 def test__vault_read_by_path_attribute_error(vault_injector: VaultInjector):
-    """_vault_read_by_path raises RuntimeError on AttributeError (client misconfigured)."""
+    """
+    _vault_read_by_path raises RuntimeError on AttributeError
+    (client misconfigured).
+    """
     vault_injector.envs.kvversion = KVVersion.v2
     vault_injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
         side_effect=AttributeError("'NoneType' has no attribute 'kv'")
@@ -447,7 +457,10 @@ def test_config_environment_adds_slash(monkeypatch):
 
 
 def test_config_environment_keeps_slash(monkeypatch):
-    """Config __post_init__ does not double slash when environment already starts with /."""
+    """
+    Config __post_init__ does not double slash when environment
+    already starts with /.
+    """
     monkeypatch.setenv("ENVIRONMENT", "/prod")
     cfg = Config.create_from_env()
     assert cfg.environment == "/prod"
@@ -463,7 +476,9 @@ def test_config_environment_empty_unchanged():
 
 
 def test_process_raises_when_not_authenticated():
-    """process() raises RuntimeError when vault_client.is_authenticated() is False."""
+    """
+    process() raises RuntimeError when vault_client.is_authenticated() is False.
+    """
     injector = VaultInjector()
     injector.vault_client = MagicMock()
     injector.vault_client.is_authenticated.return_value = False
@@ -483,7 +498,6 @@ def test_process_calls_load_all_with_input():
     injector.yaml.load_all.return_value = [{"key": "value"}]
     injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
 
-    out_stream = StringIO()
     injector.yaml.dump_all = MagicMock(
         side_effect=lambda docs, stream: stream.write("dumped")
     )
@@ -494,7 +508,9 @@ def test_process_calls_load_all_with_input():
 
 
 def test_process_calls_json_walker_for_each_non_none_doc():
-    """process() calls _json_walker(doc, _process_yaml) for each non-None document."""
+    """
+    process() calls _json_walker(doc, _process_yaml) for each non-None document.
+    """
     injector = VaultInjector()
     injector.vault_client = MagicMock()
     injector.vault_client.is_authenticated.return_value = True
@@ -517,7 +533,9 @@ def test_process_calls_json_walker_for_each_non_none_doc():
 
 
 def test_process_skips_none_documents():
-    """process() does not call _json_walker for None documents (empty YAML docs)."""
+    """
+    process() does not call _json_walker for None documents (empty YAML docs).
+    """
     injector = VaultInjector()
     injector.vault_client = MagicMock()
     injector.vault_client.is_authenticated.return_value = True
@@ -537,7 +555,9 @@ def test_process_skips_none_documents():
 
 
 def test_process_calls_dump_all_with_processed_documents():
-    """process() calls yaml.dump_all with list of processed documents and a stream."""
+    """
+    process() calls yaml.dump_all with list of processed documents and a stream.
+    """
     injector = VaultInjector()
     injector.vault_client = MagicMock()
     injector.vault_client.is_authenticated.return_value = True
@@ -548,7 +568,7 @@ def test_process_calls_dump_all_with_processed_documents():
 
     injector.yaml.dump_all = MagicMock()
 
-    result = injector.process("x: 1")
+    _ = injector.process("x: 1")
 
     injector.yaml.dump_all.assert_called_once()
     call_args = injector.yaml.dump_all.call_args[0]
@@ -588,7 +608,7 @@ def test_process_empty_documents_list_returns_empty_dump():
         side_effect=lambda docs, stream: stream.write("")
     )
 
-    result = injector.process("")
+    _ = injector.process("")
 
     injector._json_walker.assert_not_called()
     call_args = injector.yaml.dump_all.call_args[0]
@@ -600,7 +620,9 @@ def test_process_empty_documents_list_returns_empty_dump():
 
 
 def test_main_success():
-    """main reads from stdin, processes via VaultInjector, writes result to stdout."""
+    """
+    main reads from stdin, processes via VaultInjector, writes result to stdout.
+    """
     stdin_input = "key: value\n"
     expected_output = "key: replaced\n"
     mock_vinj = MagicMock()
