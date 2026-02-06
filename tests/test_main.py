@@ -412,6 +412,130 @@ def test_config_environment_empty_unchanged():
     assert cfg.environment == ""
 
 
+# ===== process (only method behavior, all deps mocked) =====
+
+def test_process_raises_when_not_authenticated():
+    """process() raises RuntimeError when vault_client.is_authenticated() is False."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = False
+
+    with pytest.raises(RuntimeError, match="Vault not configured correctly"):
+        injector.process("key: value")
+
+    injector.vault_client.is_authenticated.assert_called_once_with()
+
+
+def test_process_calls_load_all_with_input():
+    """process() passes yaml_string to yaml.load_all."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    injector.yaml.load_all.return_value = [{"key": "value"}]
+    injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
+
+    out_stream = StringIO()
+    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+
+    injector.process("input: yaml\n")
+
+    injector.yaml.load_all.assert_called_once_with("input: yaml\n")
+
+
+def test_process_calls_json_walker_for_each_non_none_doc():
+    """process() calls _json_walker(doc, _process_yaml) for each non-None document."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    doc1 = {"a": 1}
+    doc2 = {"b": 2}
+    injector.yaml.load_all.return_value = [doc1, doc2]
+    injector._json_walker = MagicMock(side_effect=lambda doc, _: {"processed": doc})
+    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+
+    injector.process("x: y")
+
+    assert injector._json_walker.call_count == 2
+    injector._json_walker.assert_any_call(doc1, injector._process_yaml)
+    injector._json_walker.assert_any_call(doc2, injector._process_yaml)
+
+
+def test_process_skips_none_documents():
+    """process() does not call _json_walker for None documents (empty YAML docs)."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    injector.yaml.load_all.return_value = [None, {"a": 1}, None]
+    injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
+    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+
+    injector.process("")
+
+    assert injector._json_walker.call_count == 1
+    injector._json_walker.assert_called_once_with({"a": 1}, injector._process_yaml)
+
+
+def test_process_calls_dump_all_with_processed_documents():
+    """process() calls yaml.dump_all with list of processed documents and a stream."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    injector.yaml.load_all.return_value = [{"x": 1}]
+    processed = {"processed": True}
+    injector._json_walker = MagicMock(return_value=processed)
+
+    injector.yaml.dump_all = MagicMock()
+
+    result = injector.process("x: 1")
+
+    injector.yaml.dump_all.assert_called_once()
+    call_args = injector.yaml.dump_all.call_args[0]
+    assert call_args[0] == [processed]
+    assert hasattr(call_args[1], "getvalue")
+
+
+def test_process_returns_dump_all_output():
+    """process() returns the string written by dump_all to the stream."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    injector.yaml.load_all.return_value = [{"key": "value"}]
+    injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
+
+    expected = "key: value\n"
+    injector.yaml.dump_all = MagicMock(
+        side_effect=lambda docs, stream: stream.write(expected)
+    )
+
+    result = injector.process("key: value")
+
+    assert result == expected
+
+
+def test_process_empty_documents_list_returns_empty_dump():
+    """process() with load_all returning [] results in dump_all([], stream)."""
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.yaml = MagicMock()
+    injector.yaml.load_all.return_value = []
+    injector._json_walker = MagicMock()
+
+    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write(""))
+
+    result = injector.process("")
+
+    injector._json_walker.assert_not_called()
+    call_args = injector.yaml.dump_all.call_args[0]
+    assert call_args[0] == []
+    assert hasattr(call_args[1], "getvalue")
+
+
 # ===== main =====
 
 def test_main_success():
