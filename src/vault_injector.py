@@ -130,11 +130,6 @@ class VaultInjector(object):
         self.vault_client = hvac.Client(
             namespace=os.environ.get("VAULT_NAMESPACE")
         )
-        if not self.vault_client.is_authenticated():
-            raise RuntimeError(
-                "Vault not configured correctly, "
-                "check VAULT_ADDR and VAULT_TOKEN env variables."
-            )
 
     def process(self, yaml_string: str) -> str:
         """
@@ -144,9 +139,18 @@ class VaultInjector(object):
             yaml_string: Input YAML manifests (may contain multiple documents
                          separated by '---')
 
+        Raises:
+            RuntimeError - if Vault is not configured correctly
+
         Returns:
             Processed YAML manifests (with '---' separators preserved)
         """
+        if not self.vault_client.is_authenticated():
+            raise RuntimeError(
+                "Vault not configured correctly, "
+                "check VAULT_ADDR and VAULT_TOKEN env variables."
+            )
+
         # Load all YAML documents
         documents = list(self.yaml.load_all(yaml_string))
 
@@ -192,8 +196,18 @@ class VaultInjector(object):
             return result
         return process(data)
 
-    def _process_yaml(self, value: Any):
-        """Process data"""
+    def _process_yaml(self, value: Any) -> Any:
+        """
+        Process data.
+        If value is string, check if it contains 'VAULT:' and
+        replace it with the value from Vault.
+
+        Args:
+            value - value to process
+
+        Return:
+            processed value
+        """
         if not isinstance(value, str):
             return value
         return re.sub(
