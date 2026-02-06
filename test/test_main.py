@@ -99,6 +99,88 @@ def test__process_yaml_variants(
         mock_replace.assert_not_called()
 
 
+# ===== _json_walker =====
+
+def test__json_walker_scalar_calls_process(vault_injector: VaultInjector):
+    """_json_walker on scalar calls process and returns its result."""
+    process = MagicMock(side_effect=lambda x: f"processed_{x}")
+    result = vault_injector._json_walker(42, process)
+    assert result == "processed_42"
+    process.assert_called_once_with(42)
+
+
+def test__json_walker_string_calls_process(vault_injector: VaultInjector):
+    """_json_walker on string calls process."""
+    process = MagicMock(return_value="out")
+    assert vault_injector._json_walker("hello", process) == "out"
+    process.assert_called_once_with("hello")
+
+
+def test__json_walker_list_processes_each_item(vault_injector: VaultInjector):
+    """_json_walker on list returns new list with each element processed."""
+    process = MagicMock(side_effect=lambda x: x * 2 if isinstance(x, int) else x)
+    result = vault_injector._json_walker([1, 2, 3], process)
+    assert result == [2, 4, 6]
+    assert process.call_count == 3
+
+
+def test__json_walker_dict_processes_each_value(vault_injector: VaultInjector):
+    """_json_walker on dict returns new dict with each value processed."""
+    process = MagicMock(side_effect=lambda x: x.upper() if isinstance(x, str) else x)
+    data = {"a": "x", "b": "y"}
+    result = vault_injector._json_walker(data, process)
+    assert result == {"a": "X", "b": "Y"}
+    assert process.call_count == 2
+
+
+def test__json_walker_nested_dict_list(vault_injector: VaultInjector):
+    """_json_walker recurses into nested dict and list."""
+    process = MagicMock(side_effect=lambda x: x + 1 if isinstance(x, int) else x)
+    data = {"k": [1, {"n": 2}]}
+    result = vault_injector._json_walker(data, process)
+    assert result == {"k": [2, {"n": 3}]}
+    # call for value: 1 - as value, 2 as value in nested dict
+    assert process.call_count == 2
+
+
+def test__json_walker_empty_list(vault_injector: VaultInjector):
+    """_json_walker on empty list returns empty list without calling process."""
+    process = MagicMock()
+    result = vault_injector._json_walker([], process)
+    assert result == []
+    process.assert_not_called()
+
+
+def test__json_walker_empty_dict(vault_injector: VaultInjector):
+    """_json_walker on empty dict returns empty dict without calling process."""
+    process = MagicMock()
+    result = vault_injector._json_walker({}, process)
+    assert result == {}
+    process.assert_not_called()
+
+
+def test__json_walker_is_root_resets_path(vault_injector: VaultInjector):
+    """_json_walker with is_root=True can be used twice without path leak."""
+    process = MagicMock(return_value=1)
+    data = {"a": 1}
+    r1 = vault_injector._json_walker(data, process, is_root=True)
+    r2 = vault_injector._json_walker(data, process, is_root=True)
+    assert r1 == {"a": 1}
+    assert r2 == {"a": 1}
+    assert process.call_count == 2
+
+
+def test__json_walker_with_process_yaml_integration(vault_injector: VaultInjector):
+    """_json_walker with _process_yaml replaces VAULT: strings (mocked _replace_value)."""
+    vault_injector._replace_value = MagicMock(
+        side_effect=lambda m: "replaced_" + (m.group(0).replace("VAULT:", ""))
+    )
+    data = {"key": "VAULT:secret/data.foo", "other": "plain"}
+    result = vault_injector._json_walker(data, vault_injector._process_yaml, is_root=True)
+    assert result["key"].startswith("replaced_")
+    assert result["other"] == "plain"
+
+
 # ===== _split_path =====
 
 @pytest.mark.parametrize(
