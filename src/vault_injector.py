@@ -7,19 +7,17 @@ This plugin place key from HashiCorp Vault into manifests rendered by Helm.
 
 Logging is saved to vault_injector.log
 """
-
-LOGGER_FILE_NAME = "./vault_injector.log"
-
-import sys  # noqa: E402
-import logging  # noqa: E402
-import os  # noqa: E402
-import re  # noqa: E402
-from io import StringIO  # noqa: E402
-from enum import Enum  # noqa: E402
-from typing import Any, Optional, Tuple, Callable  # noqa: E402
-from dataclasses import dataclass, fields  # noqa: E402
+import sys
+import logging
+import os
+import re
+from io import StringIO
+from enum import Enum
+from typing import Any, Optional, Tuple, Callable
+from dataclasses import dataclass, fields
 
 # Setup logging
+LOGGER_FILE_NAME = "./vault_injector.log"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.FileHandler(LOGGER_FILE_NAME))
@@ -194,29 +192,47 @@ class VaultInjector(object):
             return result
         return process(data)
 
-    def _process_yaml(self, value):
+    def _process_yaml(self, value: Any):
         """Process data"""
-        path = self._check_value_template(value)
-        if path is not None:
-            return self._vault_read_by_path(path)
-        return value
+        if not isinstance(value, str):
+            return value
+        return re.sub(
+            fr"{self.envs.template}.*\S+",
+            self._replace_value,
+            value
+        )
 
-    def _check_value_template(self, value: str) -> Optional[str]:
-        """Check value on template
+    def _replace_value(self, match: re.Match) -> str:
+        """
+        Take value from Vault by path and return
 
-        Return
+        Raises:
+            ValueError
+        """
+        return self._vault_read_by_path(
+            self._extract_path_from_str(match.group(0))
+        )
+
+    def _extract_path_from_str(self, value: str) -> str:
+        """
+        Extract path from string
+
+        Raises:
+            ValueError - if path not found
+
+        Return:
             path
         """
-        if not isinstance(value, str):
-            return
-        value = value.strip()
-
-        if value.startswith(self.envs.template):
-            value = value[len(self.envs.template):]
-            if not value:
-                raise ValueError("Empty secret template")
-            value = value.replace("{environment}", self.envs.environment)
-            return value.replace("//", "/")
+        if not value:
+            raise ValueError("The path is empty")
+        if not value.startswith(self.envs.template):
+            raise ValueError("The path is wrong")
+        value = value[len(self.envs.template):]
+        if not value:
+            raise ValueError("Empty secret template")
+        value = value.replace("{environment}", self.envs.environment)
+        path = value.replace("//", "/")
+        return path
 
     def _vault_read_by_path(self, path: str) -> str:
         """
@@ -290,7 +306,7 @@ class VaultInjector(object):
         v_version: Optional[int] = None
 
         # Find path
-        match = pattern.match(path)
+        match = pattern.match(path.strip())
         if not match:
             raise ValueError(f"Wrong format path: {path}")
         v_path = match.group(1)
