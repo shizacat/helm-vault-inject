@@ -1,5 +1,6 @@
 import re
-from unittest.mock import MagicMock
+from io import StringIO
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -9,6 +10,7 @@ from src.vault_injector import (
     HVWrongPath,
     KVVersion,
     VaultInjector,
+    main,
 )
 
 
@@ -326,3 +328,41 @@ def test_config_environment_empty_unchanged():
     """Config with empty environment leaves it empty."""
     cfg = Config(environment="")
     assert cfg.environment == ""
+
+
+# ===== main =====
+
+def test_main_success():
+    """main reads from stdin, processes via VaultInjector, writes result to stdout."""
+    stdin_input = "key: value\n"
+    expected_output = "key: replaced\n"
+    mock_vinj = MagicMock()
+    mock_vinj.process.return_value = expected_output
+
+    with patch("src.vault_injector.VaultInjector", return_value=mock_vinj):
+        with patch("sys.stdin", StringIO(stdin_input)):
+            with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                main()
+
+    mock_vinj.process.assert_called_once_with(stdin_input)
+    assert mock_stdout.getvalue() == expected_output
+
+
+def test_main_init_error():
+    """main exits with code 1 when VaultInjector initialization fails."""
+    with patch("src.vault_injector.VaultInjector", side_effect=RuntimeError("Vault unreachable")):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+    assert exc_info.value.code == 1
+
+
+def test_main_process_error():
+    """main exits with code 1 when process() raises."""
+    mock_vinj = MagicMock()
+    mock_vinj.process.side_effect = ValueError("Invalid YAML")
+
+    with patch("src.vault_injector.VaultInjector", return_value=mock_vinj):
+        with patch("sys.stdin", StringIO("input")):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+    assert exc_info.value.code == 1
