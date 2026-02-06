@@ -16,6 +16,7 @@ from src.vault_injector import (
 
 # ===== Fixture ====
 
+
 @pytest.fixture
 def vault_injector() -> VaultInjector:
     obj = VaultInjector()
@@ -24,6 +25,7 @@ def vault_injector() -> VaultInjector:
 
 
 # ===== Tests =====
+
 
 @pytest.mark.parametrize(
     "input_value,expected_calls,expected_result_type",
@@ -101,6 +103,7 @@ def test__process_yaml_variants(
 
 # ===== _json_walker =====
 
+
 def test__json_walker_scalar_calls_process(vault_injector: VaultInjector):
     """_json_walker on scalar calls process and returns its result."""
     process = MagicMock(side_effect=lambda x: f"processed_{x}")
@@ -118,7 +121,9 @@ def test__json_walker_string_calls_process(vault_injector: VaultInjector):
 
 def test__json_walker_list_processes_each_item(vault_injector: VaultInjector):
     """_json_walker on list returns new list with each element processed."""
-    process = MagicMock(side_effect=lambda x: x * 2 if isinstance(x, int) else x)
+    process = MagicMock(
+        side_effect=lambda x: x * 2 if isinstance(x, int) else x
+    )
     result = vault_injector._json_walker([1, 2, 3], process)
     assert result == [2, 4, 6]
     assert process.call_count == 3
@@ -126,7 +131,9 @@ def test__json_walker_list_processes_each_item(vault_injector: VaultInjector):
 
 def test__json_walker_dict_processes_each_value(vault_injector: VaultInjector):
     """_json_walker on dict returns new dict with each value processed."""
-    process = MagicMock(side_effect=lambda x: x.upper() if isinstance(x, str) else x)
+    process = MagicMock(
+        side_effect=lambda x: x.upper() if isinstance(x, str) else x
+    )
     data = {"a": "x", "b": "y"}
     result = vault_injector._json_walker(data, process)
     assert result == {"a": "X", "b": "Y"}
@@ -135,7 +142,9 @@ def test__json_walker_dict_processes_each_value(vault_injector: VaultInjector):
 
 def test__json_walker_nested_dict_list(vault_injector: VaultInjector):
     """_json_walker recurses into nested dict and list."""
-    process = MagicMock(side_effect=lambda x: x + 1 if isinstance(x, int) else x)
+    process = MagicMock(
+        side_effect=lambda x: x + 1 if isinstance(x, int) else x
+    )
     data = {"k": [1, {"n": 2}]}
     result = vault_injector._json_walker(data, process)
     assert result == {"k": [2, {"n": 3}]}
@@ -170,29 +179,42 @@ def test__json_walker_is_root_resets_path(vault_injector: VaultInjector):
     assert process.call_count == 2
 
 
-def test__json_walker_with_process_yaml_integration(vault_injector: VaultInjector):
+def test__json_walker_with_process_yaml_integration(
+    vault_injector: VaultInjector,
+):
     """_json_walker with _process_yaml replaces VAULT: strings (mocked _replace_value)."""
     vault_injector._replace_value = MagicMock(
         side_effect=lambda m: "replaced_" + (m.group(0).replace("VAULT:", ""))
     )
     data = {"key": "VAULT:secret/data.foo", "other": "plain"}
-    result = vault_injector._json_walker(data, vault_injector._process_yaml, is_root=True)
+    result = vault_injector._json_walker(
+        data, vault_injector._process_yaml, is_root=True
+    )
     assert result["key"].startswith("replaced_")
     assert result["other"] == "plain"
 
 
 # ===== _split_path =====
 
+
 @pytest.mark.parametrize(
     "path_input,expected",
     [
-        ("/test/test..path/service.filename..pub", ("/test/test.path/service", "filename.pub", None)),
-        ("/test/test..path/service.filename..pub.1", ("/test/test.path/service", "filename.pub", 1)),
+        (
+            "/test/test..path/service.filename..pub",
+            ("/test/test.path/service", "filename.pub", None),
+        ),
+        (
+            "/test/test..path/service.filename..pub.1",
+            ("/test/test.path/service", "filename.pub", 1),
+        ),
         ("/check/service.key", ("/check/service", "key", None)),
         ("/check/service.key.04", ("/check/service", "key", 4)),
     ],
 )
-def test__split_path_ok(vault_injector: VaultInjector, path_input: str, expected):
+def test__split_path_ok(
+    vault_injector: VaultInjector, path_input: str, expected
+):
     """_split_path returns (path, key, version) for valid paths."""
     assert vault_injector._split_path(path_input) == expected
 
@@ -215,15 +237,21 @@ def test__split_path_bad(vault_injector: VaultInjector, path_input: str):
 
 # ===== _extract_path_from_str =====
 
+
 @pytest.mark.parametrize(
     "template_str,expected_path",
     [
-        ("VAULT:service_name/data.postgresql_url", "service_name/data.postgresql_url"),
+        (
+            "VAULT:service_name/data.postgresql_url",
+            "service_name/data.postgresql_url",
+        ),
         ("VAULT:secret/data.api_key", "secret/data.api_key"),
         ("VAULT:test/data.key", "test/data.key"),
     ],
 )
-def test__extract_path_from_str_ok(vault_injector: VaultInjector, template_str: str, expected_path: str):
+def test__extract_path_from_str_ok(
+    vault_injector: VaultInjector, template_str: str, expected_path: str
+):
     """_extract_path_from_str extracts path from VAULT: template string."""
     assert vault_injector._extract_path_from_str(template_str) == expected_path
 
@@ -231,7 +259,12 @@ def test__extract_path_from_str_ok(vault_injector: VaultInjector, template_str: 
 def test__extract_path_from_str_with_environment(vault_injector: VaultInjector):
     """_extract_path_from_str replaces {environment} with config environment."""
     vault_injector.envs.environment = "/prod"
-    assert vault_injector._extract_path_from_str("VAULT:app/{environment}/db.password") == "app/prod/db.password"
+    assert (
+        vault_injector._extract_path_from_str(
+            "VAULT:app/{environment}/db.password"
+        )
+        == "app/prod/db.password"
+    )
 
 
 @pytest.mark.parametrize(
@@ -242,7 +275,9 @@ def test__extract_path_from_str_with_environment(vault_injector: VaultInjector):
         ("OTHER:secret/data.key", "path is wrong"),
     ],
 )
-def test__extract_path_from_str_bad(vault_injector: VaultInjector, value: str, match: str):
+def test__extract_path_from_str_bad(
+    vault_injector: VaultInjector, value: str, match: str
+):
     """_extract_path_from_str raises ValueError for invalid input."""
     with pytest.raises(ValueError, match=match):
         vault_injector._extract_path_from_str(value)
@@ -250,10 +285,13 @@ def test__extract_path_from_str_bad(vault_injector: VaultInjector, value: str, m
 
 # ===== _vault_read_by_path (mocked API) =====
 
+
 def test__vault_read_by_path_kv1(vault_injector: VaultInjector):
     """KV v1: _vault_read_by_path uses client.read and returns key from data."""
     vault_injector.envs.kvversion = KVVersion.v1
-    vault_injector.vault_client.read = MagicMock(return_value={"data": {"mykey": "secret-value"}})
+    vault_injector.vault_client.read = MagicMock(
+        return_value={"data": {"mykey": "secret-value"}}
+    )
     result = vault_injector._vault_read_by_path("/secret/mypath.mykey")
     assert result == "secret-value"
     vault_injector.vault_client.read.assert_called_once_with("/secret/mypath")
@@ -294,7 +332,9 @@ def test__vault_read_by_path_kv2_with_version(vault_injector: VaultInjector):
 def test__vault_read_by_path_kv1_version_raises(vault_injector: VaultInjector):
     """KV v1: _vault_read_by_path raises RuntimeError when version is specified."""
     vault_injector.envs.kvversion = KVVersion.v1
-    with pytest.raises(RuntimeError, match="KV version 1 don't get key by version"):
+    with pytest.raises(
+        RuntimeError, match="KV version 1 don't get key by version"
+    ):
         vault_injector._vault_read_by_path("/secret/path.key.1")
 
 
@@ -329,7 +369,9 @@ def test__get_int_bad(vault_injector: VaultInjector):
     with pytest.raises(ValueError, match="Version is not int"):
         vault_injector._get_int("abc", "Version")
 
+
 # ===== Config =====
+
 
 def test_config_defaults():
     """Config has expected default values when created without kwargs."""
@@ -343,7 +385,13 @@ def test_config_defaults():
 
 def test_config_create_from_env_empty(monkeypatch):
     """create_from_env with no env vars returns config with defaults."""
-    for key in ("MOUNT_POINT", "TEMPLATE", "DELIMINATOR", "KVVERSION", "ENVIRONMENT"):
+    for key in (
+        "MOUNT_POINT",
+        "TEMPLATE",
+        "DELIMINATOR",
+        "KVVERSION",
+        "ENVIRONMENT",
+    ):
         monkeypatch.delenv(key, raising=False)
     cfg = Config.create_from_env()
     assert cfg.mount_point == "secret"
@@ -414,6 +462,7 @@ def test_config_environment_empty_unchanged():
 
 # ===== process (only method behavior, all deps mocked) =====
 
+
 def test_process_raises_when_not_authenticated():
     """process() raises RuntimeError when vault_client.is_authenticated() is False."""
     injector = VaultInjector()
@@ -436,7 +485,9 @@ def test_process_calls_load_all_with_input():
     injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
 
     out_stream = StringIO()
-    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+    injector.yaml.dump_all = MagicMock(
+        side_effect=lambda docs, stream: stream.write("dumped")
+    )
 
     injector.process("input: yaml\n")
 
@@ -452,8 +503,12 @@ def test_process_calls_json_walker_for_each_non_none_doc():
     doc1 = {"a": 1}
     doc2 = {"b": 2}
     injector.yaml.load_all.return_value = [doc1, doc2]
-    injector._json_walker = MagicMock(side_effect=lambda doc, _: {"processed": doc})
-    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+    injector._json_walker = MagicMock(
+        side_effect=lambda doc, _: {"processed": doc}
+    )
+    injector.yaml.dump_all = MagicMock(
+        side_effect=lambda docs, stream: stream.write("dumped")
+    )
 
     injector.process("x: y")
 
@@ -470,12 +525,16 @@ def test_process_skips_none_documents():
     injector.yaml = MagicMock()
     injector.yaml.load_all.return_value = [None, {"a": 1}, None]
     injector._json_walker = MagicMock(side_effect=lambda doc, _: doc)
-    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write("dumped"))
+    injector.yaml.dump_all = MagicMock(
+        side_effect=lambda docs, stream: stream.write("dumped")
+    )
 
     injector.process("")
 
     assert injector._json_walker.call_count == 1
-    injector._json_walker.assert_called_once_with({"a": 1}, injector._process_yaml)
+    injector._json_walker.assert_called_once_with(
+        {"a": 1}, injector._process_yaml
+    )
 
 
 def test_process_calls_dump_all_with_processed_documents():
@@ -526,7 +585,9 @@ def test_process_empty_documents_list_returns_empty_dump():
     injector.yaml.load_all.return_value = []
     injector._json_walker = MagicMock()
 
-    injector.yaml.dump_all = MagicMock(side_effect=lambda docs, stream: stream.write(""))
+    injector.yaml.dump_all = MagicMock(
+        side_effect=lambda docs, stream: stream.write("")
+    )
 
     result = injector.process("")
 
@@ -537,6 +598,7 @@ def test_process_empty_documents_list_returns_empty_dump():
 
 
 # ===== main =====
+
 
 def test_main_success():
     """main reads from stdin, processes via VaultInjector, writes result to stdout."""
@@ -556,7 +618,10 @@ def test_main_success():
 
 def test_main_init_error():
     """main exits with code 1 when VaultInjector initialization fails."""
-    with patch("src.vault_injector.VaultInjector", side_effect=RuntimeError("Vault unreachable")):
+    with patch(
+        "src.vault_injector.VaultInjector",
+        side_effect=RuntimeError("Vault unreachable"),
+    ):
         with pytest.raises(SystemExit) as exc_info:
             main()
     assert exc_info.value.code == 1

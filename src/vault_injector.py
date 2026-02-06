@@ -47,6 +47,7 @@ if sys.version_info[:2] < (3, 7):
 
 # ---- Exceptions ----
 
+
 class HelmVaultExcepion(Exception):
     """Base exception for HelmVault"""
 
@@ -58,6 +59,7 @@ class HVWrongPath(HelmVaultExcepion):
 
 
 # ----- Models -----
+
 
 class KVVersion(Enum):
     v1 = "v1"
@@ -76,10 +78,7 @@ class Config:
     environment: str = ""
 
     @classmethod
-    def create_from_env(
-        cls,
-        prefix: Optional[str] = ""
-    ) -> "Config":
+    def create_from_env(cls, prefix: Optional[str] = "") -> "Config":
         kwargs = {}
 
         for f in fields(cls):
@@ -106,6 +105,7 @@ class VaultInjector(object):
     """
     Helm Vault Injector Plugin class
     """
+
     SPLITER_KEY = "."
     CONFIG_ENV_PREFIX = "HELM_VAULT_"
 
@@ -210,11 +210,7 @@ class VaultInjector(object):
         """
         if not isinstance(value, str):
             return value
-        return re.sub(
-            fr"{self.envs.template}.*\S+",
-            self._replace_value,
-            value
-        )
+        return re.sub(rf"{self.envs.template}.*\S+", self._replace_value, value)
 
     def _replace_value(self, match: re.Match) -> str:
         """
@@ -241,7 +237,7 @@ class VaultInjector(object):
             raise ValueError("The path is empty")
         if not value.startswith(self.envs.template):
             raise ValueError("The path is wrong")
-        value = value[len(self.envs.template):]
+        value = value[len(self.envs.template) :]
         if not value:
             raise ValueError("Empty secret template")
         value = value.replace("{environment}", self.envs.environment)
@@ -284,7 +280,7 @@ class VaultInjector(object):
                     path=path,
                     mount_point=self.envs.mount_point,
                     raise_on_deleted_version=True,
-                    version=version
+                    version=version,
                 )
                 return data.get("data", {}).get("data", {}).get(key)
             raise RuntimeError("Wrong KV Version specified, either v1 or v2")
@@ -313,9 +309,9 @@ class VaultInjector(object):
                 version is version of path
         """
         pattern = re.compile(
-            rf'(.*?[^{re.escape(self.SPLITER_KEY)}])'
-            rf'{re.escape(self.SPLITER_KEY)}'
-            rf'([^{re.escape(self.SPLITER_KEY)}].*)$'
+            rf"(.*?[^{re.escape(self.SPLITER_KEY)}])"
+            rf"{re.escape(self.SPLITER_KEY)}"
+            rf"([^{re.escape(self.SPLITER_KEY)}].*)$"
         )
         v_version: Optional[int] = None
 
