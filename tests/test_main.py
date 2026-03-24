@@ -1,3 +1,5 @@
+import json
+import re
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +10,8 @@ from src.vault_injector import (
     Config,
     HVWrongPath,
     KVVersion,
+    VAULT_INJECT_MOUNT_ANNOTATION,
+    VAULT_INJECT_PATHS_ANNOTATION,
     VaultInjector,
     main,
 )
@@ -390,6 +394,7 @@ def test_config_defaults():
     assert cfg.deliminator == "changeme"
     assert cfg.kvversion == KVVersion.v2
     assert cfg.environment == ""
+    assert cfg.annotation_refs is False
 
 
 def test_config_create_from_env_empty(monkeypatch):
@@ -400,6 +405,7 @@ def test_config_create_from_env_empty(monkeypatch):
         "DELIMINATOR",
         "KVVERSION",
         "ENVIRONMENT",
+        "ANNOTATION_REFS",
     ):
         monkeypatch.delenv(key, raising=False)
     cfg = Config.create_from_env()
@@ -408,6 +414,7 @@ def test_config_create_from_env_empty(monkeypatch):
     assert cfg.deliminator == "changeme"
     assert cfg.kvversion == KVVersion.v2
     assert cfg.environment == ""
+    assert cfg.annotation_refs is False
 
 
 def test_config_create_from_env_string_fields(monkeypatch):
@@ -470,6 +477,186 @@ def test_config_environment_empty_unchanged():
     """Config with empty environment leaves it empty."""
     cfg = Config(environment="")
     assert cfg.environment == ""
+
+
+@pytest.mark.parametrize(
+    "env_value",
+    ["true", "1", "yes", "on", "TRUE"],
+)
+def test_config_create_from_env_annotation_refs_truthy(monkeypatch, env_value):
+    """
+    create_from_env sets annotation_refs when HELM_VAULT_ANNOTATION_REFS is set.
+    """
+    monkeypatch.setenv("HELM_VAULT_ANNOTATION_REFS", env_value)
+    cfg = Config.create_from_env(prefix="HELM_VAULT_")
+    assert cfg.annotation_refs is True
+
+
+def test_config_create_from_env_annotation_refs_false(monkeypatch):
+    """create_from_env leaves annotation_refs False for other env values."""
+    monkeypatch.setenv("HELM_VAULT_ANNOTATION_REFS", "false")
+    cfg = Config.create_from_env(prefix="HELM_VAULT_")
+    assert cfg.annotation_refs is False
+
+
+# ===== annotation refs (mount + paths annotations) =====
+
+
+def test__replace_value_adds_to_vault_refs_when_annotation_refs_enabled(
+    vault_injector: VaultInjector,
+):
+    """_replace_value records extracted path in __vault_refs when enabled."""
+    vault_injector.envs.annotation_refs = True
+    # __vault_refs → _VaultInjector__vault_refs outside the class
+    vault_injector._VaultInjector__vault_refs = set()
+    vault_injector._vault_read_by_path = MagicMock(return_value="injected")
+    pattern = re.compile(
+        rf"{re.escape(vault_injector.envs.template)}.*\S+",
+        re.DOTALL,
+    )
+    m = pattern.match("VAULT:/secret/mypath.mykey")
+    assert m is not None
+    result = vault_injector._replace_value(m)
+    assert result == "injected"
+    assert vault_injector._VaultInjector__vault_refs == {
+        "/secret/mypath.mykey",
+    }
+    vault_injector._vault_read_by_path.assert_called_once_with(
+        "/secret/mypath.mykey"
+    )
+
+
+def test__replace_value_skips_vault_refs_when_annotation_refs_disabled(
+    vault_injector: VaultInjector,
+):
+    """
+    _replace_value does not mutate __vault_refs when annotation_refs is off.
+    """
+    vault_injector.envs.annotation_refs = False
+    vault_injector._VaultInjector__vault_refs = set()
+    vault_injector._vault_read_by_path = MagicMock(return_value="injected")
+    pattern = re.compile(
+        rf"{re.escape(vault_injector.envs.template)}.*\S+",
+        re.DOTALL,
+    )
+    m = pattern.match("VAULT:/secret/mypath.mykey")
+    assert m is not None
+    vault_injector._replace_value(m)
+    assert vault_injector._VaultInjector__vault_refs == set()
+
+
+def test_process_annotation_refs_sets_mount_and_paths_annotations(monkeypatch):
+    """
+    With HELM_VAULT_ANNOTATION_REFS, process() adds mount (plain) and paths
+    (JSON).
+    """
+    monkeypatch.setenv("HELM_VAULT_ANNOTATION_REFS", "true")
+    monkeypatch.setenv("HELM_VAULT_MOUNT_POINT", "kv2")
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
+        return_value={"data": {"data": {"a": "x", "b": "y"}}}
+    )
+    yaml_in = """apiVersion: v1
+kind: Secret
+metadata:
+  name: foo
+  annotations:
+    existing: "yes"
+stringData:
+  second: VAULT:/z/second.b
+  first: VAULT:/z/first.a
+"""
+    out = injector.process(yaml_in)
+    doc = next(injector.yaml.load_all(out))
+    ann = doc["metadata"]["annotations"]
+    assert ann["existing"] == "yes"
+    assert ann[VAULT_INJECT_MOUNT_ANNOTATION] == "kv2"
+    assert json.loads(ann[VAULT_INJECT_PATHS_ANNOTATION]) == [
+        "/z/first.a",
+        "/z/second.b",
+    ]
+
+
+def test_process_annotation_refs_deduplicates_paths(monkeypatch):
+    """Same VAULT path twice yields a single entry in paths JSON."""
+    monkeypatch.setenv("HELM_VAULT_ANNOTATION_REFS", "true")
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
+        return_value={"data": {"data": {"k": "v"}}}
+    )
+    yaml_in = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: x
+data:
+  a: VAULT:/same/path.k
+  b: VAULT:/same/path.k
+"""
+    out = injector.process(yaml_in)
+    doc = next(injector.yaml.load_all(out))
+    assert json.loads(
+        doc["metadata"]["annotations"][VAULT_INJECT_PATHS_ANNOTATION]
+    ) == ["/same/path.k"]
+
+
+def test_process_annotation_refs_per_document_isolation(monkeypatch):
+    """Each YAML document gets its own paths list (no leak between docs)."""
+    monkeypatch.setenv("HELM_VAULT_ANNOTATION_REFS", "true")
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
+        return_value={"data": {"data": {"k": "v"}}}
+    )
+    yaml_in = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: one
+data:
+  x: VAULT:/doc/one.k
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: two
+data:
+  y: VAULT:/doc/two.k
+"""
+    out = injector.process(yaml_in)
+    docs = list(injector.yaml.load_all(out))
+    assert json.loads(
+        docs[0]["metadata"]["annotations"][VAULT_INJECT_PATHS_ANNOTATION]
+    ) == ["/doc/one.k"]
+    assert json.loads(
+        docs[1]["metadata"]["annotations"][VAULT_INJECT_PATHS_ANNOTATION]
+    ) == ["/doc/two.k"]
+
+
+def test_process_without_annotation_refs_no_vault_annotations(monkeypatch):
+    """Default (annotation_refs off): no helm-vault-inject annotations."""
+    monkeypatch.delenv("HELM_VAULT_ANNOTATION_REFS", raising=False)
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
+        return_value={"data": {"data": {"k": "v"}}}
+    )
+    yaml_in = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: x
+data:
+  a: VAULT:/p.k
+"""
+    out = injector.process(yaml_in)
+    doc = next(injector.yaml.load_all(out))
+    ann = doc.get("metadata", {}).get("annotations") or {}
+    assert VAULT_INJECT_MOUNT_ANNOTATION not in ann
+    assert VAULT_INJECT_PATHS_ANNOTATION not in ann
 
 
 # ===== process (only method behavior, all deps mocked) =====

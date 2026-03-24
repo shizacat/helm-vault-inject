@@ -9,6 +9,7 @@ Logging is saved to vault_injector.log
 """
 
 import sys
+import json
 import logging
 import os
 import re
@@ -70,6 +71,12 @@ class KVVersion(Enum):
         return self.value
 
 
+# When HELM_VAULT_ANNOTATION_REFS is enabled: KV mount (plain string) and
+# injected paths (JSON array of path strings after the VAULT: template).
+VAULT_INJECT_MOUNT_ANNOTATION = "helm-vault-inject.io/vault-inject-mount"
+VAULT_INJECT_PATHS_ANNOTATION = "helm-vault-inject.io/vault-inject-paths"
+
+
 @dataclass
 class Config:
     mount_point: str = "secret"
@@ -77,6 +84,7 @@ class Config:
     deliminator: str = "changeme"
     kvversion: KVVersion = KVVersion.v2
     environment: str = ""
+    annotation_refs: bool = False
 
     @classmethod
     def create_from_env(cls, prefix: Optional[str] = "") -> "Config":
@@ -90,6 +98,13 @@ class Config:
                     kvversion_str = os.environ[env_name]
                     kwargs[f.name] = (
                         KVVersion.v1 if kvversion_str == "v1" else KVVersion.v2
+                    )
+                elif f.name == "annotation_refs":
+                    kwargs[f.name] = os.environ[env_name].lower() in (
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
                     )
                 else:
                     kwargs[f.name] = f.type(os.environ[env_name])
@@ -117,6 +132,7 @@ class VaultInjector(object):
         """
         self._logger = logger or logging.getLogger(__name__)
         self.__current_walk_path = []
+        self.__vault_refs = set()
 
         # config from environment
         self.envs = Config.create_from_env(prefix=self.CONFIG_ENV_PREFIX)
@@ -159,7 +175,7 @@ class VaultInjector(object):
         processed_documents = []
         for doc in documents:
             if doc is not None:  # Skip empty documents
-                processed_doc = self._json_walker(doc, self._process_yaml)
+                processed_doc = self._process_one_document(doc)
                 processed_documents.append(processed_doc)
 
         # Convert all processed documents back to string
@@ -197,6 +213,41 @@ class VaultInjector(object):
             return result
         return process(data)
 
+    def _process_one_document(self, doc: Any) -> Any:
+        """
+        Walk one YAML document and optionally add vault-ref annotations
+        to metadata when HELM_VAULT_ANNOTATION_REFS is enabled.
+        """
+        if not self.envs.annotation_refs:
+            return self._json_walker(doc, self._process_yaml)
+        self.__vault_refs = set()
+        processed = self._json_walker(doc, self._process_yaml)
+        return self._merge_vault_refs_annotation(processed)
+
+    def _merge_vault_refs_annotation(self, processed: Any) -> Any:
+        if not self.__vault_refs:
+            return processed
+        if not isinstance(processed, dict):
+            return processed
+
+        metadata = processed.setdefault("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+            processed["metadata"] = metadata
+
+        if metadata.get("annotations") is None:
+            metadata["annotations"] = {}
+        annotations = metadata["annotations"]
+        if not isinstance(annotations, dict):
+            annotations = {}
+            metadata["annotations"] = annotations
+
+        annotations[VAULT_INJECT_MOUNT_ANNOTATION] = self.envs.mount_point
+        annotations[VAULT_INJECT_PATHS_ANNOTATION] = json.dumps(
+            sorted(self.__vault_refs)
+        )
+        return processed
+
     def _process_yaml(self, value: Any) -> Any:
         """
         Process data.
@@ -220,9 +271,11 @@ class VaultInjector(object):
         Raises:
             ValueError
         """
-        return self._vault_read_by_path(
-            self._extract_path_from_str(match.group(0))
-        )
+        full = match.group(0)
+        extracted = self._extract_path_from_str(full)
+        if self.envs.annotation_refs:
+            self.__vault_refs.add(extracted)
+        return self._vault_read_by_path(extracted)
 
     def _extract_path_from_str(self, value: str) -> str:
         """

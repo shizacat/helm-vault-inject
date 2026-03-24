@@ -70,6 +70,25 @@ Use the plugin as a **post-renderer** so that Helm passes the rendered manifest 
 | `HELM_VAULT_DELIMINATOR` | `changeme` | Legacy deliminator (used with template) |
 | `HELM_VAULT_KVVERSION` | `v2` | KV engine version: `v1` or `v2` |
 | `HELM_VAULT_ENVIRONMENT` | (empty) | Substituted for `{environment}` in paths |
+| `HELM_VAULT_ANNOTATION_REFS` | (off) | If `true`/`1`/`yes`/`on`, add annotations on each resource that received Vault values: `helm-vault-inject.io/vault-inject-mount` (KV engine mount, plain string) and `helm-vault-inject.io/vault-inject-paths` (JSON array of path strings from the `VAULT:` placeholders in that document) |
+
+### Annotations on resources that received Vault values
+
+Example of a rendered resource **after** injection with `HELM_VAULT_ANNOTATION_REFS=true` and `HELM_VAULT_MOUNT_POINT=secret`. The chart had two `VAULT:` references in the same manifest document; paths in the annotation are sorted and match the placeholder paths (not the raw secret values):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp
+  annotations:
+    helm-vault-inject.io/vault-inject-mount: secret
+    helm-vault-inject.io/vault-inject-paths: '["/myapp/api.key", "/myapp/db.password"]'
+type: Opaque
+stringData:
+  password: s3cr3t-from-vault
+  apiKey: another-from-vault
+```
 
 ### Vault path templating
 
