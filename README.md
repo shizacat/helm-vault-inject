@@ -70,6 +70,7 @@ Use the plugin as a **post-renderer** so that Helm passes the rendered manifest 
 | `HELM_VAULT_DELIMINATOR` | `changeme` | Legacy deliminator (used with template) |
 | `HELM_VAULT_KVVERSION` | `v2` | KV engine version: `v1` or `v2` |
 | `HELM_VAULT_ENVIRONMENT` | (empty) | Substituted for `{environment}` in paths |
+| `HELM_VAULT_ANNOTATION_REFS` | (off) | If `true`/`1`/`yes`/`on`, add annotations on each resource that received Vault values: `helm-vault-inject.io/vault-inject-mount` (KV engine mount, plain string) and `helm-vault-inject.io/vault-inject-paths` (JSON array of path strings from the `VAULT:` placeholders in that document) |
 
 ### Vault path templating
 

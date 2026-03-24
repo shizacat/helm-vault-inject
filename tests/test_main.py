@@ -390,6 +390,7 @@ def test_config_defaults():
     assert cfg.deliminator == "changeme"
     assert cfg.kvversion == KVVersion.v2
     assert cfg.environment == ""
+    assert cfg.annotation_refs is False
 
 
 def test_config_create_from_env_empty(monkeypatch):
@@ -400,6 +401,7 @@ def test_config_create_from_env_empty(monkeypatch):
         "DELIMINATOR",
         "KVVERSION",
         "ENVIRONMENT",
+        "ANNOTATION_REFS",
     ):
         monkeypatch.delenv(key, raising=False)
     cfg = Config.create_from_env()
@@ -408,6 +410,7 @@ def test_config_create_from_env_empty(monkeypatch):
     assert cfg.deliminator == "changeme"
     assert cfg.kvversion == KVVersion.v2
     assert cfg.environment == ""
+    assert cfg.annotation_refs is False
 
 
 def test_config_create_from_env_string_fields(monkeypatch):
