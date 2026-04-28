@@ -133,6 +133,7 @@ class VaultInjector(object):
         self._logger = logger or logging.getLogger(__name__)
         self.__current_walk_path = []
         self.__vault_refs = set()
+        self.__current_doc_kind = None
 
         # config from environment
         self.envs = Config.create_from_env(prefix=self.CONFIG_ENV_PREFIX)
@@ -218,6 +219,9 @@ class VaultInjector(object):
         Walk one YAML document and optionally add vault-ref annotations
         to metadata when HELM_VAULT_ANNOTATION_REFS is enabled.
         """
+        self.__current_doc_kind = (
+            doc.get("kind") if isinstance(doc, dict) else None
+        )
         if not self.envs.annotation_refs:
             return self._json_walker(doc, self._process_yaml)
         self.__vault_refs = set()
