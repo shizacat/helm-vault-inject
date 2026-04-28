@@ -127,9 +127,7 @@ data:
 
     out = injector.process(yaml_in)
     doc = next(injector.yaml.load_all(out))
-    assert (
-        base64.b64decode(doc["data"]["password"]).decode("utf-8") == "s3cr3t"
-    )
+    assert base64.b64decode(doc["data"]["password"]).decode("utf-8") == "s3cr3t"
 
 
 def test_process_secret_data_invalid_base64_is_ignored():
