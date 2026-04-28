@@ -280,6 +280,7 @@ class VaultInjector(object):
                     return base64.b64encode(
                         replaced_decoded_value.encode("utf-8")
                     ).decode("utf-8")
+                return value
 
         return self._replace_vault_refs(value)
 
