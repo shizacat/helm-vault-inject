@@ -1,5 +1,6 @@
 import json
 import re
+import base64
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -101,6 +102,54 @@ def test__process_yaml_variants(
         # Don't change non-string types, _replace_value should not be called
         assert result is input_value
         mock_replace.assert_not_called()
+
+
+def test_process_secret_data_base64_vault_placeholder_replaced():
+    """
+    Secret.data value with base64("VAULT:...") is decoded, injected, re-encoded.
+    """
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock(
+        return_value={"data": {"data": {"password": "s3cr3t"}}}
+    )
+    encoded_placeholder = base64.b64encode(
+        b"VAULT:/myapp/creds.password"
+    ).decode("utf-8")
+    yaml_in = f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  password: {encoded_placeholder}
+"""
+
+    out = injector.process(yaml_in)
+    doc = next(injector.yaml.load_all(out))
+    assert base64.b64decode(doc["data"]["password"]).decode("utf-8") == "s3cr3t"
+
+
+def test_process_secret_data_invalid_base64_is_ignored():
+    """
+    Invalid base64 in Secret.data does not raise and leaves value unchanged.
+    """
+    injector = VaultInjector()
+    injector.vault_client = MagicMock()
+    injector.vault_client.is_authenticated.return_value = True
+    injector.vault_client.secrets.kv.v2.read_secret_version = MagicMock()
+    yaml_in = """apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  password: not_base64!!!
+"""
+
+    out = injector.process(yaml_in)
+    doc = next(injector.yaml.load_all(out))
+    assert doc["data"]["password"] == "not_base64!!!"
+    injector.vault_client.secrets.kv.v2.read_secret_version.assert_not_called()
 
 
 # ===== _json_walker =====

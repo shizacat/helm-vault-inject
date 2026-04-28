@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+import base64
+import binascii
 from io import StringIO
 from enum import Enum
 from typing import Any, Optional, Tuple, Callable
@@ -133,6 +135,7 @@ class VaultInjector(object):
         self._logger = logger or logging.getLogger(__name__)
         self.__current_walk_path = []
         self.__vault_refs = set()
+        self.__current_doc_kind = None
 
         # config from environment
         self.envs = Config.create_from_env(prefix=self.CONFIG_ENV_PREFIX)
@@ -218,6 +221,9 @@ class VaultInjector(object):
         Walk one YAML document and optionally add vault-ref annotations
         to metadata when HELM_VAULT_ANNOTATION_REFS is enabled.
         """
+        self.__current_doc_kind = (
+            doc.get("kind") if isinstance(doc, dict) else None
+        )
         if not self.envs.annotation_refs:
             return self._json_walker(doc, self._process_yaml)
         self.__vault_refs = set()
@@ -262,7 +268,38 @@ class VaultInjector(object):
         """
         if not isinstance(value, str):
             return value
+
+        # Kubernetes Secret.data must contain base64-encoded strings.
+        # If a base64 payload decodes to "VAULT:..." placeholder, inject it and
+        # encode the resolved value back to base64.
+        if self._is_secret_data_value():
+            decoded_value = self._decode_base64_to_str(value)
+            if decoded_value is not None:
+                replaced_decoded_value = self._replace_vault_refs(decoded_value)
+                if replaced_decoded_value != decoded_value:
+                    return base64.b64encode(
+                        replaced_decoded_value.encode("utf-8")
+                    ).decode("utf-8")
+                return value
+
+        return self._replace_vault_refs(value)
+
+    def _replace_vault_refs(self, value: str) -> str:
         return re.sub(rf"{self.envs.template}.*\S+", self._replace_value, value)
+
+    def _is_secret_data_value(self) -> bool:
+        return (
+            self.__current_doc_kind == "Secret"
+            and len(self.__current_walk_path) >= 2
+            and self.__current_walk_path[-2] == "data"
+        )
+
+    def _decode_base64_to_str(self, value: str) -> Optional[str]:
+        try:
+            decoded_bytes = base64.b64decode(value, validate=True)
+            return decoded_bytes.decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError):
+            return None
 
     def _replace_value(self, match: re.Match) -> str:
         """
